@@ -486,8 +486,10 @@ body.readonly .gantt-row .quick-complete-btn:not(.sg-quick-complete) { display: 
   color: var(--text-secondary);
 }
 .summary-chip strong { color: var(--text-primary); font-size: 0.9rem; }
-.summary-chip.warn { border-color: var(--danger); color: var(--danger); background: #FEF2F2; }
-.summary-chip.warn strong { color: var(--danger); }
+.summary-chip.warn { border-color: #A32D2D; color: #A32D2D; background: #FCEBEB; }
+.summary-chip.warn strong { color: #A32D2D; }
+.summary-chip.good { border-color: #3B6D11; color: #3B6D11; background: #EAF3DE; }
+.summary-chip.good strong { color: #3B6D11; }
 .tab-bar { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
 .tab-btn {
   padding: 0.5rem 1rem; border: none; background: none; cursor: pointer;
@@ -4629,20 +4631,60 @@ function renderActivePanel() {
     if (expectedPct > 0) score -= Math.max(0, expectedPct - actualPct) * 0.6;
     if (delayDays > 0)   score -= Math.min(30, delayDays * 1.5);
     if (isOverdue)       score -= 20;
+
+    // Stage-gate health penalty (mirrors Q Tracker computeStageGateHealth logic)
+    if (p.projectType === 'objective') {
+      const gates = projects.filter(sg => sg.isStageGate && sg.parentId === p.id)
+        .sort((a, b) => parseDate(a.end) - parseDate(b.end));
+      if (gates.length > 0) {
+        const todayStr = formatDate(today);
+        // Find current gate (earliest unfinished) and previous gate
+        let currentIdx = gates.findIndex(g => !isComplete(g));
+        if (currentIdx < 0) currentIdx = gates.length - 1; // all done → last gate is "current"
+        const current = gates[currentIdx];
+        const previous = currentIdx > 0 ? gates[currentIdx - 1] : null;
+
+        // Count overdue gates
+        const overdueGates = gates.filter(g => !isComplete(g) && parseDate(g.end) <= today).length;
+        const lateGates = gates.filter(g => isComplete(g) && g.completedDate && g.end && parseDate(g.completedDate) > parseDate(g.end)).length;
+
+        // Rule: multiple overdue gates → heavy penalty
+        if (overdueGates >= 2) score -= 35;
+        else if (overdueGates === 1) score -= 20;
+
+        // Rule: current gate overdue → penalty based on days overdue
+        if (!isComplete(current) && current.end && todayStr > current.end) {
+          const gateOverdueDays = Math.ceil((today - parseDate(current.end)) / 86400000);
+          score -= Math.min(25, gateOverdueDays * 2);
+        }
+
+        // Rule: previous gate passed late → moderate penalty
+        if (previous && isComplete(previous) && previous.completedDate && previous.end &&
+            parseDate(previous.completedDate) > parseDate(previous.end)) {
+          score -= 10;
+        }
+
+        // Rule: gates completed late accumulate
+        if (lateGates > 1) score -= lateGates * 5;
+      }
+    }
+
     score = Math.round(Math.max(0, Math.min(100, score)));
     return { score, expectedPct: Math.round(expectedPct), delayDays, isOverdue };
   }
 
-  function healthLabel(score) { return score >= 70 ? 'On track' : score >= 40 ? 'At risk' : 'Off track'; }
-  function healthColor(score) { return score >= 70 ? '#1D9E75' : score >= 40 ? '#BA7517' : '#E24B4A'; }
+  function healthLabel(score) { return score >= 70 ? 'On track' : score >= 40 ? 'Watch closely' : 'At risk'; }
+  function healthColor(score) { return score >= 70 ? '#639922' : score >= 40 ? '#BA7517' : '#E24B4A'; }
 
   function statusBadge(score) {
     const c = healthColor(score), l = healthLabel(score);
-    return `<span style="font-size:0.63rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${c}20;color:${c};flex-shrink:0;">${l}</span>`;
+    const bg = score >= 70 ? '#EAF3DE' : score >= 40 ? '#FAEEDA' : '#FCEBEB';
+    const fg = score >= 70 ? '#3B6D11' : score >= 40 ? '#854F0B' : '#A32D2D';
+    return `<span style="font-size:0.63rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${bg};color:${fg};flex-shrink:0;">${l}</span>`;
   }
 
   function delayBadge(d) {
-    return d > 0 ? `<span style="font-size:0.63rem;font-weight:700;color:#E24B4A;background:#FEE2E2;padding:2px 6px;border-radius:10px;flex-shrink:0;">+${d}d</span>` : '';
+    return d > 0 ? `<span style="font-size:0.63rem;font-weight:700;color:#A32D2D;background:#FCEBEB;padding:2px 6px;border-radius:10px;flex-shrink:0;">+${d}d</span>` : '';
   }
 
   function progressBar(pct, expPct, color) {
@@ -4738,7 +4780,7 @@ function renderActivePanel() {
       const rows = kpis.map(k => {
         const cur = k.current ?? 0, tgt = parseFloat(k.target) || 0;
         const pctK = tgt > 0 ? Math.min(100, Math.round((cur / tgt) * 100)) : (cur >= tgt ? 100 : 0);
-        const kColor = pctK >= 100 ? '#1D9E75' : pctK >= 60 ? '#BA7517' : '#E24B4A';
+        const kColor = pctK >= 100 ? '#3B6D11' : pctK >= 60 ? '#854F0B' : '#A32D2D';
         const unit = k.unit ? ' ' + k.unit : '';
         const dirArrow = k.direction === 'decrease' ? '↓' : k.direction === 'maintain' ? '=' : '↑';
         return `<div style="display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border-radius:50%;background:${kColor};flex-shrink:0;"></div></div>
@@ -4823,7 +4865,7 @@ function renderActivePanel() {
           goalStr = '<span style="opacity:0.55;margin-right:2px;">↑</span>100%'; curStr = `${Math.round(krPct)}%`;
         }
         if (!curStr) curStr = `${Math.round(krPct)}%`;
-        const kColor = krPct >= 100 ? '#1D9E75' : krPct >= 60 ? '#BA7517' : '#E24B4A';
+        const kColor = krPct >= 100 ? '#3B6D11' : krPct >= 60 ? '#854F0B' : '#A32D2D';
         return `<div style="display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border-radius:50%;background:${kColor};flex-shrink:0;"></div></div>
           <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${kr.name||''}">${kr.name||'KR'}</span>
           <span style="color:var(--text-tertiary);text-align:right;white-space:nowrap;">${goalStr}</span>
@@ -4851,14 +4893,24 @@ function renderActivePanel() {
     const gateDots = gates.map((sg, gi) => {
       const passed = isComplete(sg);
       const due    = parseDate(sg.end) <= today;
-      const color  = passed ? '#1D9E75' : due ? '#E24B4A' : 'var(--border)';
+      const inProgress = !passed && (sg.progress > 0);
+      // Passed late: completed but after due date
+      const passedLate = passed && sg.completedDate && sg.end && parseDate(sg.completedDate) > parseDate(sg.end);
+      // 5 states: passed on time, passed late, overdue, active, pending
+      let dotBg, dotBorder, dotTextColor, statusWord;
+      if (passed && passedLate) { dotBg = '#FAEEDA'; dotBorder = '#854F0B'; dotTextColor = '#854F0B'; statusWord = 'passed late'; }
+      else if (passed)          { dotBg = '#EAF3DE'; dotBorder = '#3B6D11'; dotTextColor = '#3B6D11'; statusWord = 'passed'; }
+      else if (due)             { dotBg = '#FCEBEB'; dotBorder = '#A32D2D'; dotTextColor = '#A32D2D'; statusWord = 'overdue'; }
+      else if (inProgress)      { dotBg = '#E6F1FB'; dotBorder = '#0C447C'; dotTextColor = '#0C447C'; statusWord = 'in progress'; }
+      else                      { dotBg = '#f0f0ee'; dotBorder = '#ccc';    dotTextColor = '#555';    statusWord = 'pending'; }
+
       const baseline = sg.baselineEndDate || sg.baselineDate;
       let deltaStr = '';
       if (baseline && sg.end && baseline !== sg.end) {
         const d = Math.round((parseDate(sg.end) - parseDate(baseline)) / 86400000);
         deltaStr = d > 0 ? ` (+${d}d)` : ` (${d}d)`;
       }
-      const tooltip = `Gate ${gi+1}: ${sg.name}${deltaStr} — ${passed?'passed':due?'overdue':'pending'} (due ${sg.end})`;
+      const tooltip = `Gate ${gi+1}: ${sg.name}${deltaStr} — ${statusWord} (due ${sg.end})`;
 
       // Cross-objective blocker bubbles
       const crossDeps = (sg.dependencies || []).filter(d => {
@@ -4871,13 +4923,14 @@ function renderActivePanel() {
         const depSg  = projects.find(x => x.id === depId);
         const depObj = depSg ? projects.find(x => x.id === depSg.parentId) : null;
         const depDone = depSg && isComplete(depSg);
-        const bColor  = depDone ? '#1D9E75' : '#E24B4A';
-        const bLabel  = `${depSg ? depSg.name : 'Gate'} (${depObj ? depObj.name : 'Other'})`;
-        return `<span title="Blocked by: ${bLabel}" style="font-size:0.58rem;padding:1px 5px;border-radius:8px;background:${bColor}18;border:1px solid ${bColor}40;color:${bColor};white-space:nowrap;">⊘ ${depSg ? depSg.name : 'Gate'}</span>`;
+        const bBg    = depDone ? '#EAF3DE' : '#FCEBEB';
+        const bColor = depDone ? '#3B6D11' : '#A32D2D';
+        const bLabel = `${depSg ? depSg.name : 'Gate'} (${depObj ? depObj.name : 'Other'})`;
+        return `<span title="Blocked by: ${bLabel}" style="font-size:0.58rem;padding:1px 5px;border-radius:8px;background:${bBg};border:1px solid ${bColor}40;color:${bColor};white-space:nowrap;">⊘ ${depSg ? depSg.name : 'Gate'}</span>`;
       }).join('');
 
-      const dot = `<div title="${tooltip}" style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid ${passed?'#1D9E75':due?'#E24B4A':'var(--border)'};flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-        ${passed ? '<span style="color:white;font-size:0.5rem;font-weight:700;">✓</span>' : `<span style="color:${due?'#E24B4A':'var(--text-tertiary)'};font-size:0.55rem;font-weight:700;">${gi+1}</span>`}
+      const dot = `<div title="${tooltip}" style="width:14px;height:14px;border-radius:50%;background:${dotBg};border:2px solid ${dotBorder};flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+        ${passed ? `<span style="color:${dotTextColor};font-size:0.5rem;font-weight:700;">✓</span>` : `<span style="color:${dotTextColor};font-size:0.55rem;font-weight:700;">${gi+1}</span>`}
       </div>`;
 
       return blockers ? `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">${dot}<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;">${blockers}</div></div>` : dot;
@@ -4888,7 +4941,7 @@ function renderActivePanel() {
       <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border-light);">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
           <span style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Gates ${gatesPassed}/${gates.length}</span>
-          ${gatesBehind > 0 ? `<span style="font-size:0.62rem;font-weight:700;color:#E24B4A;background:#FEE2E2;padding:1px 5px;border-radius:8px;">⚑ ${gatesBehind} behind</span>` : ''}
+          ${gatesBehind > 0 ? `<span style="font-size:0.62rem;font-weight:700;color:#A32D2D;background:#FCEBEB;padding:1px 5px;border-radius:8px;">⚑ ${gatesBehind} behind</span>` : ''}
         </div>
         <div style="display:flex;align-items:flex-start;gap:0;">${gateDots.join(connector)}</div>
       </div>` : '';
@@ -5093,7 +5146,7 @@ function renderMilestonesPanel() {
   const activeDivisions = divOrder.filter(d => divFilter === 'all' || d === divFilter);
 
   function statusBadge(p) {
-    if (isComplete(p)) return '<span style="font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:10px;background:#1D9E7520;color:#1D9E75;">Complete</span>';
+    if (isComplete(p)) return '<span style="font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:10px;background:#EAF3DE;color:#3B6D11;">Complete</span>';
     const adj = adjusted[p.id] || {};
     const adjEnd = parseDate(adj.end || p.end);
     const origEnd = parseDate(adj.originalEnd || p.end);
@@ -5101,8 +5154,8 @@ function renderMilestonesPanel() {
 
     // Original due date status
     const origDaysLeft = Math.ceil((origEnd - today) / 86400000);
-    const origColor = origDaysLeft < 0 ? '#E24B4A' : origDaysLeft <= 30 ? '#BA7517' : 'var(--text-secondary)';
-    const origBg = origDaysLeft < 0 ? '#FEE2E2' : origDaysLeft <= 30 ? '#FEF3C7' : 'var(--bg-tertiary)';
+    const origColor = origDaysLeft < 0 ? '#A32D2D' : origDaysLeft <= 30 ? '#854F0B' : 'var(--text-secondary)';
+    const origBg = origDaysLeft < 0 ? '#FCEBEB' : origDaysLeft <= 30 ? '#FAEEDA' : 'var(--bg-tertiary)';
     const origWeight = origDaysLeft <= 30 ? '700' : '600';
     const origText = origDaysLeft < 0 ? `${Math.abs(origDaysLeft)}d overdue` : `${origDaysLeft}d left`;
     const origBadge = `<span style="font-size:0.68rem;font-weight:${origWeight};padding:2px 7px;border-radius:10px;background:${origBg};color:${origColor};">${origText}</span>`;
@@ -5111,8 +5164,8 @@ function renderMilestonesPanel() {
 
     // Delayed due date status
     const adjDaysLeft = Math.ceil((adjEnd - today) / 86400000);
-    const adjColor = adjDaysLeft < 0 ? '#E24B4A' : adjDaysLeft <= 30 ? '#BA7517' : 'var(--text-secondary)';
-    const adjBg = adjDaysLeft < 0 ? '#FEE2E2' : adjDaysLeft <= 30 ? '#FEF3C7' : 'var(--bg-tertiary)';
+    const adjColor = adjDaysLeft < 0 ? '#A32D2D' : adjDaysLeft <= 30 ? '#854F0B' : 'var(--text-secondary)';
+    const adjBg = adjDaysLeft < 0 ? '#FCEBEB' : adjDaysLeft <= 30 ? '#FAEEDA' : 'var(--bg-tertiary)';
     const adjWeight = adjDaysLeft <= 30 ? '700' : '600';
     const adjText = adjDaysLeft < 0 ? `${Math.abs(adjDaysLeft)}d overdue` : `${adjDaysLeft}d left`;
     const adjBadge = `<span style="font-size:0.68rem;font-weight:${adjWeight};padding:2px 7px;border-radius:10px;background:${adjBg};color:${adjColor};">${adjText}</span>`;
@@ -5126,7 +5179,7 @@ function renderMilestonesPanel() {
   function trlMrlBadge(val, label) {
     if (!val) return '<span style="color:var(--text-tertiary);font-size:0.72rem;">—</span>';
     const n = parseInt(val);
-    const color = n >= 7 ? '#1D9E75' : n >= 4 ? '#BA7517' : '#E24B4A';
+    const color = n >= 7 ? '#3B6D11' : n >= 4 ? '#854F0B' : '#A32D2D';
     return `<span style="font-size:0.72rem;font-weight:700;color:${color};">${n}</span>`;
   }
 
@@ -5140,23 +5193,23 @@ function renderMilestonesPanel() {
       const dir = k.direction || 'increase';
       if (dir === 'decrease') {
         // Lower is better: met if cur <= tgt, partial if within 110%, missed otherwise
-        if (cur <= tgt) return '#1D9E75';
-        if (tgt > 0 && cur <= tgt * 1.1) return '#BA7517';
-        return '#E24B4A';
+        if (cur <= tgt) return '#3B6D11';
+        if (tgt > 0 && cur <= tgt * 1.1) return '#854F0B';
+        return '#A32D2D';
       } else if (dir === 'maintain') {
         // Closer to target is better
         const deviation = Math.abs(cur - tgt);
         const tolerance = Math.abs(tgt) * 0.05 || 1;
-        if (deviation <= tolerance) return '#1D9E75';
-        if (deviation <= tolerance * 2) return '#BA7517';
-        return '#E24B4A';
+        if (deviation <= tolerance) return '#3B6D11';
+        if (deviation <= tolerance * 2) return '#854F0B';
+        return '#A32D2D';
       } else {
         // Increase: higher is better
-        if (tgt <= 0) return cur > 0 ? '#1D9E75' : '#E24B4A';
+        if (tgt <= 0) return cur > 0 ? '#3B6D11' : '#A32D2D';
         const pct = (cur / tgt) * 100;
-        if (pct >= 100) return '#1D9E75';
-        if (pct >= 90) return '#BA7517';
-        return '#E24B4A';
+        if (pct >= 100) return '#3B6D11';
+        if (pct >= 90) return '#854F0B';
+        return '#A32D2D';
       }
     }
 
