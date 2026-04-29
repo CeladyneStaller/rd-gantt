@@ -1200,12 +1200,23 @@ kbd {
 
 <div id="activeTab" class="hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-    <div style="display:flex;gap:0.5rem;align-items:center;">
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
       <select id="activeFilter" onchange="renderActivePanel()" style="font-size:0.8rem;padding:0.3rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);">
         <option value="all">All divisions</option>
         <option value="fuelcell">Fuel Cell</option>
         <option value="electrolyzer">Electrolyzer</option>
         <option value="exploration">Exploration</option>
+      </select>
+      <select id="activeTypeFilter" onchange="renderActivePanel()" style="font-size:0.8rem;padding:0.3rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);">
+        <option value="both">Milestones &amp; Objectives</option>
+        <option value="milestones">Milestones only</option>
+        <option value="objectives">Objectives only</option>
+      </select>
+      <select id="activeStatusFilter" onchange="renderActivePanel()" style="font-size:0.8rem;padding:0.3rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);">
+        <option value="all">All statuses</option>
+        <option value="ontrack">On track</option>
+        <option value="watch">Watch closely</option>
+        <option value="atrisk">At risk</option>
       </select>
     </div>
     <div id="activeSummary" style="display:flex;gap:0.75rem;flex-wrap:wrap;"></div>
@@ -4739,26 +4750,44 @@ function renderActivePanel() {
   const activeMilestones = projects.filter(p => (p.milestone || p.projectType === 'delivery') && (isActive(p) || isMsDue(p)));
   const activeObjectives  = projects.filter(p => p.projectType === 'objective' && isActive(p));
 
-  // Summary
-  const allActive = [...activeMilestones, ...activeObjectives];
+  // Type filter
+  const typeFilter = document.getElementById('activeTypeFilter')?.value || 'both';
+  const typedMs  = typeFilter === 'objectives' ? [] : activeMilestones;
+  const typedObj = typeFilter === 'milestones' ? [] : activeObjectives;
+
+  // Status filter
+  const statusFilter = document.getElementById('activeStatusFilter')?.value || 'all';
+  function passesStatusFilter(p) {
+    if (statusFilter === 'all') return true;
+    const s = getHealth(p).score;
+    if (statusFilter === 'ontrack') return s >= 70;
+    if (statusFilter === 'watch') return s >= 40 && s < 70;
+    if (statusFilter === 'atrisk') return s < 40;
+    return true;
+  }
+  const filteredMs  = typedMs.filter(passesStatusFilter);
+  const filteredObj = typedObj.filter(passesStatusFilter);
+
+  // Summary (computed from unfiltered type list for context)
+  const allActive = [...typedMs, ...typedObj];
   const allHealth = allActive.map(p => getHealth(p).score);
   const total    = allActive.length;
   const onTrack  = allHealth.filter(s => s >= 70).length;
-  const atRisk   = allHealth.filter(s => s >= 40 && s < 70).length;
-  const offTrack = allHealth.filter(s => s < 40).length;
+  const watchClosely = allHealth.filter(s => s >= 40 && s < 70).length;
+  const atRisk   = allHealth.filter(s => s < 40).length;
   const delayed  = allActive.filter(p => (delays[p.id]||0) > 0).length;
   if (summary) {
     summary.innerHTML = [
       `<span class="summary-chip"><strong>${total}</strong> active</span>`,
-      onTrack  ? `<span class="summary-chip good"><strong>${onTrack}</strong> on track</span>` : '',
-      atRisk   ? `<span class="summary-chip warn"><strong>${atRisk}</strong> at risk</span>` : '',
-      offTrack ? `<span class="summary-chip warn"><strong>${offTrack}</strong> off track</span>` : '',
-      delayed  ? `<span class="summary-chip warn"><strong>${delayed}</strong> delayed</span>` : '',
+      onTrack      ? `<span class="summary-chip good"><strong>${onTrack}</strong> on track</span>` : '',
+      watchClosely ? `<span class="summary-chip warn"><strong>${watchClosely}</strong> watch closely</span>` : '',
+      atRisk       ? `<span class="summary-chip warn"><strong>${atRisk}</strong> at risk</span>` : '',
+      delayed      ? `<span class="summary-chip warn"><strong>${delayed}</strong> delayed</span>` : '',
     ].join('');
   }
 
-  if (total === 0) {
-    grid.innerHTML = '<div class="empty-state">No active milestones or objectives.</div>';
+  if (filteredMs.length === 0 && filteredObj.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No active milestones or objectives matching filters.</div>';
     return;
   }
 
@@ -4990,8 +5019,8 @@ function renderActivePanel() {
   let html = '';
 
   activeDivisions.forEach(div => {
-    const divMs  = activeMilestones.filter(p => getEffectiveDivision(p) === div);
-    const divObj = activeObjectives.filter(p => getEffectiveDivision(p) === div);
+    const divMs  = filteredMs.filter(p => getEffectiveDivision(p) === div);
+    const divObj = filteredObj.filter(p => getEffectiveDivision(p) === div);
     if (!divMs.length && !divObj.length) return;
 
     // Get product lines represented in this division's active items
@@ -8984,6 +9013,20 @@ initApp().then(() => {
   }
   const urlTab = params.get('tab');
   if (urlTab) switchTab(urlTab);
+
+  // Active tab type filter
+  const urlType = params.get('type');
+  if (urlType && ['milestones','objectives','both'].includes(urlType)) {
+    const typeEl = document.getElementById('activeTypeFilter');
+    if (typeEl) typeEl.value = urlType;
+  }
+
+  // Active tab status filter
+  const urlStatus = params.get('status');
+  if (urlStatus && ['ontrack','watch','atrisk','all'].includes(urlStatus)) {
+    const statusEl = document.getElementById('activeStatusFilter');
+    if (statusEl) statusEl.value = urlStatus;
+  }
 
   // Product filter by milestone code
   const urlProduct = params.get('product');
