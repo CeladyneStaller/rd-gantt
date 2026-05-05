@@ -185,6 +185,8 @@ body.readonly #confSaveBtn,
 body.readonly #confSyncBtn,
 body.readonly .add-subproject-btn,
 body.readonly #addProjectBtnWrap,
+body.readonly .edit-only,
+body.readonly .product-card-actions,
 body.readonly .changelog-add-btn { display: none !important; }
 body.readonly .quick-complete-btn:not(.sg-quick-complete) { display: none !important; }
 body.readonly .gantt-row .quick-complete-btn:not(.sg-quick-complete) { display: none !important; }
@@ -1015,7 +1017,7 @@ kbd {
   <div class="toolbar" style="flex-direction:column;gap:0.5rem;align-items:stretch;">
     <!-- Row 1: Actions -->
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-      <div class="toolbar-group">
+      <div class="toolbar-group edit-only">
         <div id="addProjectBtnWrap"><button class="btn-primary" onclick="openModal()">+ Add project</button></div>
       </div>
       <div class="toolbar-group">
@@ -1023,14 +1025,15 @@ kbd {
         <button onclick="collapseAll()" title="Collapse all rows">⊟ Collapse</button>
         <button onclick="expandAll()" title="Expand all rows">⊞ Expand</button>
       </div>
-      <div class="toolbar-group">
+      <div class="toolbar-group edit-only">
         <button id="whatifBtn" onclick="toggleWhatIfMode()">🔮 What-if</button>
         <button id="statsBtn" onclick="toggleStats()" title="Toggle stats panel (S)">📊 Stats</button>
         <button onclick="openShortcuts()" title="Keyboard shortcuts (?)">⌨️</button>
       </div>
-      <div class="data-actions">
+      <div class="data-actions edit-only">
         <button onclick="exportData()">Export</button>
         <button onclick="document.getElementById('importFile').click()">Import</button>
+        <button onclick="resetAllData()" style="color:#A32D2D;" title="Clear all data and start fresh">Reset</button>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
         <button onclick="saveSnapshot()" title="Save current state as the reset target for Clear">Set default</button>
         <span id="snapshotIndicator" class="snapshot-indicator" style="display:none"></span>
@@ -1143,7 +1146,7 @@ kbd {
 <div id="resourcesTab" class="hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
     <div style="display:flex;gap:0.5rem;align-items:center;">
-      <button class="btn-primary" onclick="openMemberModal()">+ Add member</button>
+      <button class="btn-primary edit-only" onclick="openMemberModal()">+ Add member</button>
       <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
         <button id="teamViewList" onclick="setTeamView('list')" style="padding:0.3rem 0.75rem;font-size:0.78rem;border:none;cursor:pointer;background:var(--accent);color:white;">List</button>
         <button id="teamViewOrg" onclick="setTeamView('org')" style="padding:0.3rem 0.75rem;font-size:0.78rem;border:none;cursor:pointer;background:var(--bg-primary);color:var(--text-secondary);">Org Chart</button>
@@ -1162,7 +1165,7 @@ kbd {
 
 <div id="equipmentTab" class="hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-    <button class="btn-primary" onclick="openEquipmentModal()">+ Add equipment</button>
+    <button class="btn-primary edit-only" onclick="openEquipmentModal()">+ Add equipment</button>
     <div id="equipSummary" style="display:flex;gap:0.75rem;flex-wrap:wrap;"></div>
   </div>
   <div class="resource-panel" style="border:none;padding:0;background:transparent;">
@@ -1172,7 +1175,7 @@ kbd {
 
 <div id="productsTab" class="hidden">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-    <button class="btn-primary" onclick="openProductModal()">+ Add product line</button>
+    <button class="btn-primary edit-only" onclick="openProductModal()">+ Add product line</button>
     <div id="productSummary" style="display:flex;gap:0.75rem;flex-wrap:wrap;"></div>
   </div>
   <div class="products-grid" id="productsGrid"></div>
@@ -1237,6 +1240,19 @@ kbd {
     <div id="msSummary" style="display:flex;gap:0.75rem;flex-wrap:wrap;"></div>
   </div>
   <div id="msGrid"></div>
+</div>
+
+<div class="modal-overlay" id="objDetailOverlay" onclick="closeObjDetail(event)" style="z-index:1100;">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:700px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem 0;flex-shrink:0;">
+      <h2 id="objDetailTitle" style="margin:0;font-size:1.1rem;font-weight:600;"></h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="objDetailEditBtn" style="font-size:0.78rem;padding:4px 12px;border:1px solid var(--border);background:var(--bg-primary);border-radius:6px;cursor:pointer;color:var(--text-secondary);">✏️ Edit</button>
+        <button onclick="closeObjDetail()" style="font-size:1.2rem;background:none;border:none;cursor:pointer;color:var(--text-tertiary);line-height:1;">×</button>
+      </div>
+    </div>
+    <div id="objDetailContent" style="padding:1rem 1.5rem 1.5rem;"></div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
@@ -1713,6 +1729,7 @@ const JSONBIN_API_KEY = '$2a$10$yJlmc9C76UAAdqpnsNR0oeboCCOK/VS1YJnFU4kH4kJrySTg
 const EXTERNAL_BINS = [
   { binId: '69cdbc6c36566621a86f37d4', label: 'Fuel Cell',    source: 'fc' },   // ← paste Fuel Cell bin ID
   { binId: '69cc4226856a682189e9322c', label: 'Electrolyzer', source: 'el' },   // ← paste Electrolyzer bin ID
+
 ];
 // Uses the same API key as the main bin. If external bins use a different
 // account, override per-entry: { binId: '...', apiKey: '...', label: '...', source: '...' }
@@ -1720,6 +1737,7 @@ const EXTERNAL_BINS = [
 // Read-only mode: add ?readonly=1 to the URL to hide all editing UI.
 // Stage-gate quick-complete (✓) still works in readonly mode.
 const IS_READONLY = new URLSearchParams(window.location.search).has('readonly');
+if (IS_READONLY) document.body.classList.add('readonly');
 
 // ── Storage state ───────────────────────────────────────────
 const CONF_ATTACHMENT_NAME = 'gantt-data.json'; // kept for compat
@@ -4980,7 +4998,7 @@ function renderActivePanel() {
     const daysStr  = daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `${daysLeft}d left`;
     const daysCol  = daysLeft < 0 ? '#E24B4A' : daysLeft <= 7 ? '#BA7517' : 'var(--text-tertiary)';
 
-    return `<div onclick="openModal(${_idArg(p.id)})" style="min-width:250px;max-width:320px;flex-shrink:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow=''">
+    return `<div onclick="openObjectiveDetail(${_idArg(p.id)})" style="min-width:250px;max-width:320px;flex-shrink:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow=''">
       <div style="height:3px;background:${colors.bar};"></div>
       <div style="padding:0.75rem 0.875rem;">
         <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
@@ -5372,6 +5390,263 @@ function renderMilestonesPanel() {
   });
 
   grid.innerHTML = html || '<div class="empty-state">No milestones found.</div>';
+}
+
+function closeObjDetail(e) {
+  if (e && e.target !== e.currentTarget) return;
+  document.getElementById('objDetailOverlay').classList.remove('active');
+}
+
+function openObjectiveDetail(id) {
+  const p = projects.find(x => x.id === id);
+  if (!p) return;
+
+  const { adjusted, delays } = calculateAdjustedDates();
+  const colors = getProjectColors(p);
+  const adj = adjusted[p.id] || {};
+
+  // Health
+  function _getHealth(proj) {
+    const a = adjusted[proj.id] || {};
+    const origEnd = parseDate(a.originalEnd || proj.end).getTime();
+    const origStart = parseDate(a.originalStart || proj.start).getTime();
+    const dur = origEnd - origStart;
+    const elapsed = today.getTime() - origStart;
+    const expectedPct = dur > 0 ? Math.min(100, Math.max(0, (elapsed / dur) * 100)) : 0;
+    const actualPct = proj.progress || 0;
+    const dd = delays[proj.id] || 0;
+    const overdue = parseDate(a.originalEnd || proj.end) < today && !isComplete(proj);
+    let sc = 100;
+    if (expectedPct > 0) sc -= Math.max(0, expectedPct - actualPct) * 0.6;
+    if (dd > 0) sc -= Math.min(30, dd * 1.5);
+    if (overdue) sc -= 20;
+    if (proj.projectType === 'objective') {
+      const gates = projects.filter(sg => sg.isStageGate && sg.parentId === proj.id).sort((a,b) => parseDate(a.end) - parseDate(b.end));
+      if (gates.length > 0) {
+        let ci = gates.findIndex(g => !isComplete(g)); if (ci < 0) ci = gates.length - 1;
+        const cur = gates[ci], prev = ci > 0 ? gates[ci - 1] : null;
+        const og = gates.filter(g => !isComplete(g) && parseDate(g.end) <= today).length;
+        const lg = gates.filter(g => isComplete(g) && g.completedDate && g.end && parseDate(g.completedDate) > parseDate(g.end)).length;
+        if (og >= 2) sc -= 35; else if (og === 1) sc -= 20;
+        if (!isComplete(cur) && cur.end && today > parseDate(cur.end)) sc -= Math.min(25, Math.ceil((today - parseDate(cur.end)) / 86400000) * 2);
+        if (prev && isComplete(prev) && prev.completedDate && prev.end && parseDate(prev.completedDate) > parseDate(prev.end)) sc -= 10;
+        if (lg > 1) sc -= lg * 5;
+      }
+    }
+    return Math.round(Math.max(0, Math.min(100, sc)));
+  }
+
+  const healthScore = _getHealth(p);
+  const hColor = healthScore >= 70 ? '#639922' : healthScore >= 40 ? '#BA7517' : '#E24B4A';
+  const hBg = healthScore >= 70 ? '#EAF3DE' : healthScore >= 40 ? '#FAEEDA' : '#FCEBEB';
+  const hFg = healthScore >= 70 ? '#3B6D11' : healthScore >= 40 ? '#854F0B' : '#A32D2D';
+  const hLabel = healthScore >= 70 ? 'On track' : healthScore >= 40 ? 'Watch closely' : 'At risk';
+  const pct = p.progress || 0;
+  const delayDays = delays[p.id] || 0;
+
+  // Header
+  let html = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;flex-wrap:wrap;">
+    <div style="width:10px;height:10px;border-radius:50%;background:${colors.bar};flex-shrink:0;"></div>
+    <span style="font-size:0.68rem;font-weight:700;padding:3px 10px;border-radius:10px;background:${hBg};color:${hFg};">${hLabel} · ${healthScore}</span>
+    ${delayDays > 0 ? `<span style="font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:10px;background:#FCEBEB;color:#A32D2D;">+${delayDays}d delayed</span>` : ''}
+    ${isComplete(p) ? `<span style="font-size:0.68rem;font-weight:700;padding:3px 10px;border-radius:10px;background:#EAF3DE;color:#3B6D11;">Complete</span>` : ''}
+  </div>`;
+
+  // Progress bar
+  const expPct = (() => {
+    const origEnd = parseDate(adj.originalEnd || p.end).getTime();
+    const origStart = parseDate(adj.originalStart || p.start).getTime();
+    const dur = origEnd - origStart;
+    return dur > 0 ? Math.round(Math.min(100, Math.max(0, ((today.getTime() - origStart) / dur) * 100))) : 0;
+  })();
+  html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:1.25rem;">
+    <div style="flex:1;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:visible;position:relative;">
+      <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:${colors.bar};border-radius:4px;"></div>
+      ${expPct > 0 ? `<div style="position:absolute;left:${expPct}%;top:-2px;width:2px;height:12px;background:${colors.bar};border-radius:1px;opacity:0.5;" title="Expected: ${expPct}%"></div>` : ''}
+    </div>
+    <span style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);flex-shrink:0;">${pct}%</span>
+  </div>`;
+
+  // Stage-gates section
+  const gates = projects.filter(sg => sg.isStageGate && sg.parentId === p.id)
+    .sort((a, b) => parseDate(a.end) - parseDate(b.end));
+
+  if (gates.length > 0) {
+    const gatesPassed = gates.filter(g => isComplete(g)).length;
+    html += `<div style="margin-bottom:1.25rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+        <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);">Stage Gates — ${gatesPassed}/${gates.length} passed</span>
+      </div>`;
+
+    // Gate timeline dots
+    const dotHtml = gates.map((sg, gi) => {
+      const passed = isComplete(sg);
+      const due = parseDate(sg.end) <= today;
+      const inProg = !passed && sg.progress > 0;
+      const passedLate = passed && sg.completedDate && sg.end && parseDate(sg.completedDate) > parseDate(sg.end);
+      let bg, bdr, tc;
+      if (passed && passedLate) { bg = '#FAEEDA'; bdr = '#854F0B'; tc = '#854F0B'; }
+      else if (passed)          { bg = '#EAF3DE'; bdr = '#3B6D11'; tc = '#3B6D11'; }
+      else if (due)             { bg = '#FCEBEB'; bdr = '#A32D2D'; tc = '#A32D2D'; }
+      else if (inProg)          { bg = '#E6F1FB'; bdr = '#0C447C'; tc = '#0C447C'; }
+      else                      { bg = '#f0f0ee'; bdr = '#ccc';    tc = '#555'; }
+      return `<div style="width:18px;height:18px;border-radius:50%;background:${bg};border:2px solid ${bdr};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        ${passed ? `<span style="color:${tc};font-size:0.55rem;font-weight:700;">✓</span>` : `<span style="color:${tc};font-size:0.6rem;font-weight:700;">${gi+1}</span>`}
+      </div>`;
+    });
+    const connector = '<div style="flex:1;height:2px;background:var(--border-light);min-width:6px;max-width:24px;"></div>';
+    html += `<div style="display:flex;align-items:center;gap:0;margin-bottom:1rem;">${dotHtml.join(connector)}</div>`;
+
+    // Gate detail rows
+    gates.forEach((sg, gi) => {
+      const passed = isComplete(sg);
+      const due = parseDate(sg.end) <= today;
+      const passedLate = passed && sg.completedDate && sg.end && parseDate(sg.completedDate) > parseDate(sg.end);
+      let statusText, statusBg, statusFg;
+      if (passed && passedLate) {
+        const lateDays = Math.round((parseDate(sg.completedDate) - parseDate(sg.end)) / 86400000);
+        statusText = `Passed late (+${lateDays}d)`; statusBg = '#FAEEDA'; statusFg = '#854F0B';
+      } else if (passed) {
+        statusText = 'Passed'; statusBg = '#EAF3DE'; statusFg = '#3B6D11';
+      } else if (due) {
+        const overdueDays = Math.ceil((today - parseDate(sg.end)) / 86400000);
+        statusText = `${overdueDays}d overdue`; statusBg = '#FCEBEB'; statusFg = '#A32D2D';
+      } else {
+        const daysLeft = Math.ceil((parseDate(sg.end) - today) / 86400000);
+        statusText = `${daysLeft}d left`; statusBg = daysLeft <= 30 ? '#FAEEDA' : 'var(--bg-tertiary)'; statusFg = daysLeft <= 30 ? '#854F0B' : 'var(--text-secondary)';
+      }
+
+      const dueDate = parseDate(sg.end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+      const compDate = sg.completedDate ? parseDate(sg.completedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '';
+
+      // KPIs for this gate (from parent stageGates array)
+      const gateDef = (p.stageGates || []).find(g => g.subProjectId === sg.id || g.name === sg.name);
+      const gateKpis = (gateDef?.kpis || []).filter(k => k.name);
+
+      // Cross-objective deps
+      const crossDeps = (sg.dependencies || []).filter(d => {
+        const depId = typeof d === 'object' ? d.id : d;
+        const depProj = projects.find(x => x.id === depId);
+        return depProj && depProj.isStageGate && depProj.parentId !== p.id;
+      });
+
+      html += `<div style="border:1px solid var(--border-light);border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.5rem;${passed ? 'opacity:0.75;' : ''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${gateKpis.length || crossDeps.length ? '0.5rem' : '0'};">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+            <span style="font-size:0.72rem;font-weight:700;color:var(--text-tertiary);">${gi + 1}</span>
+            <span style="font-size:0.82rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${sg.name}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <span style="font-size:0.68rem;color:var(--text-tertiary);">Due ${dueDate}</span>
+            ${compDate ? `<span style="font-size:0.68rem;color:${passedLate ? '#854F0B' : '#3B6D11'};">✓ ${compDate}</span>` : ''}
+            <span style="font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusFg};">${statusText}</span>
+          </div>
+        </div>`;
+
+      // Gate KPIs
+      if (gateKpis.length > 0) {
+        html += `<div style="display:grid;grid-template-columns:14px 1fr auto auto;gap:2px 8px;font-size:0.68rem;align-items:center;margin-bottom:${crossDeps.length ? '6px' : '0'};">`;
+        gateKpis.forEach(k => {
+          const cur = k.current ?? 0, tgt = parseFloat(k.target) || 0;
+          const dir = k.direction || 'increase';
+          let kColor;
+          if (dir === 'decrease') { kColor = cur <= tgt ? '#3B6D11' : cur <= tgt * 1.1 ? '#854F0B' : '#A32D2D'; }
+          else if (dir === 'maintain') { const dev = Math.abs(cur - tgt), tol = Math.abs(tgt) * 0.05 || 1; kColor = dev <= tol ? '#3B6D11' : dev <= tol * 2 ? '#854F0B' : '#A32D2D'; }
+          else { const pctK = tgt > 0 ? (cur / tgt) * 100 : (cur > 0 ? 100 : 0); kColor = pctK >= 100 ? '#3B6D11' : pctK >= 90 ? '#854F0B' : '#A32D2D'; }
+          const unit = k.units || k.unit || '';
+          const dirArrow = dir === 'decrease' ? '↓' : dir === 'maintain' ? '=' : '↑';
+          html += `<div style="display:flex;align-items:center;justify-content:center;"><div style="width:6px;height:6px;border-radius:50%;background:${kColor};"></div></div>
+            <span style="color:var(--text-secondary);">${k.name}</span>
+            <span style="color:var(--text-tertiary);text-align:right;white-space:nowrap;">${dirArrow}${k.target || 'TBD'}${unit ? ' ' + unit : ''}</span>
+            <span style="color:${kColor};font-weight:600;text-align:right;white-space:nowrap;">${cur}${unit ? ' ' + unit : ''}</span>`;
+        });
+        html += `</div>`;
+      }
+
+      // Cross-objective blockers
+      if (crossDeps.length > 0) {
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+          <span style="font-size:0.6rem;color:var(--text-tertiary);font-weight:600;">Blocked by:</span>`;
+        crossDeps.forEach(d => {
+          const depId = typeof d === 'object' ? d.id : d;
+          const depSg = projects.find(x => x.id === depId);
+          const depObj = depSg ? projects.find(x => x.id === depSg.parentId) : null;
+          const depDone = depSg && isComplete(depSg);
+          const bBg = depDone ? '#EAF3DE' : '#FCEBEB';
+          const bFg = depDone ? '#3B6D11' : '#A32D2D';
+          html += `<span style="font-size:0.6rem;padding:1px 6px;border-radius:8px;background:${bBg};border:1px solid ${bFg}30;color:${bFg};">${depDone ? '✓' : '⊘'} ${depSg ? depSg.name : 'Gate'} (${depObj ? depObj.name : 'Other'})</span>`;
+        });
+        html += `</div>`;
+      }
+
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Key Results
+  const krs = p.keyResults || [];
+  if (krs.length > 0) {
+    html += `<div style="margin-bottom:1.25rem;">
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:0.5rem;">Key Results</div>
+      <div style="display:grid;grid-template-columns:14px 1fr auto auto;gap:3px 8px;font-size:0.72rem;align-items:center;">
+        <div></div>
+        <div style="font-size:0.6rem;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;">Key Result</div>
+        <div style="font-size:0.6rem;font-weight:600;color:var(--text-tertiary);text-align:right;">Target</div>
+        <div style="font-size:0.6rem;font-weight:600;color:var(--text-tertiary);text-align:right;">Current</div>`;
+    krs.forEach(kr => {
+      let krPct = 0, goalStr = '100%', curStr = '';
+      if (kr.trackingType === 'kpi') {
+        krPct = calculateKpiProgress(kr.kpis || []);
+        const fk = (kr.kpis || [])[0];
+        if (fk) { const u = fk.unit ? ' ' + fk.unit : ''; const da = fk.direction === 'decrease' ? '↓' : fk.direction === 'maintain' ? '=' : '↑'; goalStr = `${da}${fk.target}${u}`; curStr = `${fk.current ?? 0}${u}`; }
+        else curStr = `${Math.round(krPct)}%`;
+      } else if (kr.trackingType === 'subkr') {
+        krPct = calcSubKrProgress(kr.subKrs || []);
+        const total = (kr.subKrs || []).length, done = (kr.subKrs || []).filter(s => (s.progress || 0) >= 100).length;
+        goalStr = `${total}`; curStr = `${done}`;
+      } else { krPct = kr.progress || 0; goalStr = '↑100%'; curStr = `${Math.round(krPct)}%`; }
+      if (!curStr) curStr = `${Math.round(krPct)}%`;
+      const kColor = krPct >= 100 ? '#3B6D11' : krPct >= 60 ? '#854F0B' : '#A32D2D';
+      html += `<div style="display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border-radius:50%;background:${kColor};"></div></div>
+        <span style="color:var(--text-secondary);">${kr.name || 'KR'}</span>
+        <span style="color:var(--text-tertiary);text-align:right;white-space:nowrap;">${goalStr}</span>
+        <span style="color:${kColor};font-weight:600;text-align:right;white-space:nowrap;">${curStr}</span>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Dependent projects (what this objective blocks)
+  const depMap = {};
+  projects.forEach(proj => {
+    (proj.dependencies || []).forEach(d => {
+      const depId = typeof d === 'object' ? d.id : d;
+      if (!depMap[depId]) depMap[depId] = [];
+      depMap[depId].push(proj);
+    });
+  });
+  const blockedProjects = (depMap[p.id] || []).filter(d => !d.isStageGate && !isComplete(d));
+  if (blockedProjects.length > 0) {
+    html += `<div>
+      <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-tertiary);margin-bottom:0.5rem;">Blocks</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">`;
+    blockedProjects.forEach(bp => {
+      const bpColors = getProjectColors(bp);
+      html += `<span style="font-size:0.68rem;padding:3px 10px;border-radius:8px;background:var(--bg-tertiary);border:1px solid var(--border-light);color:var(--text-secondary);display:flex;align-items:center;gap:4px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:${bpColors.bar};flex-shrink:0;"></span>${bp.name}
+      </span>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Set content
+  document.getElementById('objDetailTitle').textContent = p.name;
+  document.getElementById('objDetailContent').innerHTML = html;
+  document.getElementById('objDetailEditBtn').onclick = function() {
+    closeObjDetail();
+    openModal(id);
+  };
+  document.getElementById('objDetailOverlay').classList.add('active');
 }
 
 function openMilestoneReport(id) {
@@ -8675,6 +8950,51 @@ function jumpToToday() {
   }
 }
 
+function resetAllData() {
+  if (!confirm('⚠️ Reset ALL data?\n\nThis will permanently delete all projects, milestones, objectives, resources, equipment, products, and changelog entries.\n\nThis cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure?')) return;
+
+  if (isSharedMode()) {
+    // Require API key to confirm reset
+    const key = prompt('Enter your JSONBin API key to confirm reset:');
+    if (!key) { alert('Reset cancelled.'); return; }
+    if (key !== JSONBIN_API_KEY) { alert('Invalid API key. Reset cancelled.'); return; }
+
+    // Key verified — proceed with reset
+    localStorage.removeItem(STORAGE_KEY);
+    const emptyPayload = {
+      projects: [], resources: [], equipment: [],
+      products: [], changelog: [], collapsed: [],
+      importAssociations: {}, importProductAssoc: {}, importDelayExclusions: [],
+      nextId: 10000
+    };
+    confSaveRemote(emptyPayload);
+    _resetInMemory();
+  } else {
+    // Standalone mode — fall back to typing RESET
+    const final = prompt('Type RESET to confirm data deletion:');
+    if (final !== 'RESET') { alert('Reset cancelled.'); return; }
+    localStorage.removeItem(STORAGE_KEY);
+    _resetInMemory();
+  }
+}
+
+function _resetInMemory() {
+  projects = [];
+  resources = [];
+  equipment = [];
+  products = [];
+  changelog = [];
+  collapsed = new Set();
+  importAssociations = {};
+  importProductAssoc = {};
+  importDelayExclusions = new Set();
+  nextId = 10000;
+  saveData();
+  render();
+  showToast('All data has been reset.');
+}
+
 function exportData() {
   const data = JSON.stringify({ projects: projects.filter(p => !p._imported), resources, equipment, products }, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
@@ -8811,6 +9131,7 @@ document.addEventListener('keydown', function(e) {
   const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
   if (e.key === 'Escape') {
+    closeObjDetail();
     closeModal();
     closeResourceManager();
     closeEquipmentManager();
