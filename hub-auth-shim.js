@@ -23,7 +23,7 @@
   'use strict';
 
   const SESSION_KEY = 'hub_session_v1';
-  const HUB_PATH = 'https://corey.github.io/rd-hub/';
+  const HUB_PATH = 'https://celadynestaller.github.io/CeladyneHQ/';
 
   // ---- Iframe bypass ----
   // If the tool is loaded inside any iframe (Confluence macro etc.), skip auth.
