@@ -2526,6 +2526,11 @@ function computeStatusSnapshot() {
       const adj = adjusted[p.id] || {};
       const adjEnd = parseDate(adj.end || p.end);
       const daysLeft = Math.ceil((adjEnd - today) / 86400000);
+      // isActive matches the active-panel definition: started, not tentative.
+      // Completion is tracked separately as `isComplete` so consumers can choose
+      // whether to include finished objectives in their "active" bucket.
+      const pStart = parseDate(adj.originalStart || p.start);
+      const isActive = !p.tentative && pStart <= today;
       objectives[String(p.id)] = {
         name: p.name || '',
         slug: (typeof generateProjectId === 'function') ? generateProjectId(p) : '',
@@ -2535,6 +2540,7 @@ function computeStatusSnapshot() {
         daysLeft,
         delayDays: h.delayDays,
         isComplete: isComplete(p),
+        isActive,
         gates: gatesForObjective(p)
       };
     });
