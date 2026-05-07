@@ -2528,6 +2528,7 @@ function computeStatusSnapshot() {
       const daysLeft = Math.ceil((adjEnd - today) / 86400000);
       objectives[String(p.id)] = {
         name: p.name || '',
+        slug: (typeof generateProjectId === 'function') ? generateProjectId(p) : '',
         score: h.score,
         status: healthStatusKey(h.score),
         progress: p.progress || 0,
