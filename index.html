@@ -988,7 +988,7 @@ kbd {
 </head>
 <body>
 
-<h1>Celadyne Gantt Chart</h1>
+<h1>Celadyne Technical Gantt Chart</h1>
 <div id="barTooltip" class="bar-tooltip"></div>
 <p class="subtitle">All data stored locally in your browser. Dependencies, resources, and sub-projects supported.</p>
 
@@ -2476,6 +2476,41 @@ function healthStatusKey(score) {
   return score >= 70 ? 'ontrack' : score >= 40 ? 'watch' : 'atrisk';
 }
 
+// Stage-gate state classifier — mirrors the gateDots logic in renderActivePanel.
+// Returns one of: 'passed', 'passed-late', 'overdue', 'in-progress', 'pending'.
+function classifyGateState(sg) {
+  const passed = isComplete(sg);
+  const due = sg.end ? parseDate(sg.end) <= today : false;
+  const inProgress = !passed && (sg.progress || 0) > 0;
+  const passedLate = passed && sg.completedDate && sg.end && parseDate(sg.completedDate) > parseDate(sg.end);
+  if (passed && passedLate) return 'passed-late';
+  if (passed)               return 'passed';
+  if (due)                  return 'overdue';
+  if (inProgress)           return 'in-progress';
+  return 'pending';
+}
+
+// Build the gates list for an objective, mirroring active panel logic:
+// prefer real stage-gate sub-projects when present, otherwise fall back to
+// inline definitions in p.stageGates.
+function gatesForObjective(p) {
+  const subs = projects.filter(sg => sg.isStageGate && sg.parentId === p.id)
+    .sort((a, b) => parseDate(a.end) - parseDate(b.end));
+  if (subs.length > 0) {
+    return subs.map(sg => ({ name: sg.name || '', state: classifyGateState(sg) }));
+  }
+  const inline = (p.stageGates || []).filter(sg => sg.name && sg.name.trim());
+  return inline.map(sg => ({
+    name: sg.name,
+    state: classifyGateState({
+      end: sg.endDate || p.end,
+      progress: calculateKpiProgress(sg.kpis || []),
+      manuallyCompleted: false,
+      isStageGate: true
+    })
+  }));
+}
+
 // Build the snapshot persisted alongside `projects`. The R&D Hub reads this
 // to render status indicators on Stage-gate tiles without re-running the
 // cascade and health math itself. Keep payload small — one entry per
@@ -2492,12 +2527,14 @@ function computeStatusSnapshot() {
       const adjEnd = parseDate(adj.end || p.end);
       const daysLeft = Math.ceil((adjEnd - today) / 86400000);
       objectives[String(p.id)] = {
+        name: p.name || '',
         score: h.score,
         status: healthStatusKey(h.score),
         progress: p.progress || 0,
         daysLeft,
         delayDays: h.delayDays,
-        isComplete: isComplete(p)
+        isComplete: isComplete(p),
+        gates: gatesForObjective(p)
       };
     });
     return { computedAt: new Date().toISOString(), objectives };
