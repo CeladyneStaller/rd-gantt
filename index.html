@@ -2533,7 +2533,12 @@ function computeStatusSnapshot() {
     projects.forEach(p => nameById.set(p.id, p.name || ''));
     projects.forEach(p => {
       if (!p || p.projectType !== 'objective') return;
-      if (p._imported) return; // imported projects belong to other bins
+      // Imported projects ARE included: rd-gantt is the company-wide view, so
+      // its snapshot must reflect its rigorous health calculation for every
+      // objective on the dashboard, native or imported. The hub's cross-bin
+      // dedup handles the resulting name collision (company copy is dropped
+      // when a divisional twin exists, divisional twin gets enriched from
+      // the company bin's data via name match).
       const h = computeProjectHealth(p, adjusted, delays);
       const adj = adjusted[p.id] || {};
       const adjEnd = parseDate(adj.end || p.end);
