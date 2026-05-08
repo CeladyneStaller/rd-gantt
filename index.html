@@ -2531,6 +2531,9 @@ function computeStatusSnapshot() {
     // per objective (otherwise the snapshot is O(objectives × projects)).
     const nameById = new Map();
     projects.forEach(p => nameById.set(p.id, p.name || ''));
+    // Imported objectives have null parentId; their effective parent is
+    // resolved via importAssociations (same as the active panel).
+    const effParentMap = _buildEffParentMap();
     projects.forEach(p => {
       if (!p || p.projectType !== 'objective') return;
       // Imported projects ARE included: rd-gantt is the company-wide view, so
@@ -2551,8 +2554,12 @@ function computeStatusSnapshot() {
       objectives[String(p.id)] = {
         name: p.name || '',
         // Parent project's name — used by hub tile to render "Bin · Parent"
-        // subtitle. Empty string when no parent (top-level objective).
-        parentName: (p.parentId != null && nameById.get(p.parentId)) || '',
+        // subtitle. Uses the effective parent (which honors importAssociations)
+        // so imported objectives reflect their re-parenting in rd-gantt.
+        parentName: (() => {
+          const effPid = getEffectiveParentId(p, effParentMap);
+          return (effPid != null && nameById.get(effPid)) || '';
+        })(),
         slug: (typeof generateProjectId === 'function') ? generateProjectId(p) : '',
         score: h.score,
         status: healthStatusKey(h.score),
