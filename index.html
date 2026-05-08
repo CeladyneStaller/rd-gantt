@@ -990,7 +990,7 @@ kbd {
 
 <h1>Celadyne Technical Gantt Chart</h1>
 <div id="barTooltip" class="bar-tooltip"></div>
-<p class="subtitle">All data stored locally in your browser. Dependencies, resources, and sub-projects supported.</p>
+<p class="subtitle">Celadyne overall technical Gantt aligned to division projects.</p>
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('gantt')">All projects</button>
@@ -2497,7 +2497,12 @@ function gatesForObjective(p) {
   const subs = projects.filter(sg => sg.isStageGate && sg.parentId === p.id)
     .sort((a, b) => parseDate(a.end) - parseDate(b.end));
   if (subs.length > 0) {
-    return subs.map(sg => ({ name: sg.name || '', state: classifyGateState(sg) }));
+    return subs.map(sg => ({
+      name: sg.name || '',
+      state: classifyGateState(sg),
+      endDate: sg.end || '',
+      completedDate: sg.completedDate || null
+    }));
   }
   const inline = (p.stageGates || []).filter(sg => sg.name && sg.name.trim());
   return inline.map(sg => ({
@@ -2507,7 +2512,10 @@ function gatesForObjective(p) {
       progress: calculateKpiProgress(sg.kpis || []),
       manuallyCompleted: false,
       isStageGate: true
-    })
+    }),
+    endDate: sg.endDate || p.end || '',
+    // Inline definitions don't track completion dates — only real sub-projects do.
+    completedDate: null
   }));
 }
 
@@ -2519,6 +2527,10 @@ function computeStatusSnapshot() {
   try {
     const { adjusted, delays } = calculateAdjustedDates();
     const objectives = {};
+    // Build id→name map once so we can resolve parent names without an O(n) scan
+    // per objective (otherwise the snapshot is O(objectives × projects)).
+    const nameById = new Map();
+    projects.forEach(p => nameById.set(p.id, p.name || ''));
     projects.forEach(p => {
       if (!p || p.projectType !== 'objective') return;
       if (p._imported) return; // imported projects belong to other bins
@@ -2533,6 +2545,9 @@ function computeStatusSnapshot() {
       const isActive = !p.tentative && pStart <= today;
       objectives[String(p.id)] = {
         name: p.name || '',
+        // Parent project's name — used by hub tile to render "Bin · Parent"
+        // subtitle. Empty string when no parent (top-level objective).
+        parentName: (p.parentId != null && nameById.get(p.parentId)) || '',
         slug: (typeof generateProjectId === 'function') ? generateProjectId(p) : '',
         score: h.score,
         status: healthStatusKey(h.score),
