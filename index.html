@@ -4971,7 +4971,7 @@ function renderActivePanel() {
     const daysStr  = daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `${daysLeft}d left`;
     const daysCol  = daysLeft < 0 ? '#E24B4A' : daysLeft <= 7 ? '#BA7517' : 'var(--text-tertiary)';
 
-    return `<div onclick="openModal(${_idArg(p.id)})" style="min-width:220px;max-width:280px;flex-shrink:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow=''">
+    return `<div onclick="openMilestoneReport(${_idArg(p.id)})" style="min-width:220px;max-width:280px;flex-shrink:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow=''">
       <div style="height:3px;background:${colors.bar};"></div>
       <div style="padding:0.75rem 0.875rem;">
         <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
