@@ -4950,8 +4950,11 @@ function renderActivePanel() {
         <div style="${kpiHeaderStyle};text-align:right;">Current</div>`;
       const rows = kpis.map(k => {
         const cur = k.current ?? 0, tgt = parseFloat(k.target) || 0;
-        const pctK = tgt > 0 ? Math.min(100, Math.round((cur / tgt) * 100)) : (cur >= tgt ? 100 : 0);
-        const kColor = pctK >= 100 ? '#3B6D11' : pctK >= 60 ? '#854F0B' : '#A32D2D';
+        const dir = k.direction || 'increase';
+        let kColor;
+        if (dir === 'decrease') { kColor = cur <= tgt ? '#3B6D11' : tgt > 0 && cur <= tgt * 1.1 ? '#854F0B' : '#A32D2D'; }
+        else if (dir === 'maintain') { const dev = Math.abs(cur - tgt), tol = Math.abs(tgt) * 0.05 || 1; kColor = dev <= tol ? '#3B6D11' : dev <= tol * 2 ? '#854F0B' : '#A32D2D'; }
+        else { const pctK = tgt > 0 ? (cur / tgt) * 100 : (cur > 0 ? 100 : 0); kColor = pctK >= 100 ? '#3B6D11' : pctK >= 90 ? '#854F0B' : '#A32D2D'; }
         const unit = k.unit ? ' ' + k.unit : '';
         const dirArrow = k.direction === 'decrease' ? '↓' : k.direction === 'maintain' ? '=' : '↑';
         return `<div style="display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border-radius:50%;background:${kColor};flex-shrink:0;"></div></div>
