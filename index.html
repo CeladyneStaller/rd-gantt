@@ -4976,7 +4976,7 @@ function renderActivePanel() {
       <div style="padding:0.75rem 0.875rem;">
         <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
           <div style="flex:1;min-width:0;">
-            <div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}</div>
+            <div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.name}">${p.name}${p.milestoneReport?.locked ? ' <span style="font-size:0.65rem;" title="Report locked">🔒</span>' : ''}</div>
             <div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:1px;">Due ${origEnd.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'})}</div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
