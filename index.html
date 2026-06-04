@@ -5124,6 +5124,8 @@ function renderActivePanel() {
     const daysLeft = Math.ceil((adjEnd - today) / 86400000);
     const daysStr  = daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `${daysLeft}d left`;
     const daysCol  = daysLeft < 0 ? '#E24B4A' : daysLeft <= 7 ? '#BA7517' : 'var(--text-tertiary)';
+    const allGatesComplete = gates.length > 0 && gatesPassed === gates.length;
+    const anyGateLate = allGatesComplete && gates.some(g => g.completedDate && g.end && parseDate(g.completedDate) > parseDate(g.end));
 
     return `<div onclick="openObjectiveDetail(${_idArg(p.id)})" style="min-width:250px;max-width:320px;flex-shrink:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow=''">
       <div style="height:3px;background:${colors.bar};"></div>
@@ -5134,7 +5136,9 @@ function renderActivePanel() {
             <div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:1px;">${daysStr}</div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
-            ${statusBadge(h.score)}
+            ${allGatesComplete
+              ? `<span style="font-size:0.63rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${anyGateLate ? '#FAEEDA' : '#EAF3DE'};color:${anyGateLate ? '#854F0B' : '#3B6D11'};">Complete</span>`
+              : statusBadge(h.score)}
             ${delayBadge(h.delayDays)}
           </div>
         </div>
