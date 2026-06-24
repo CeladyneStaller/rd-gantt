@@ -2596,6 +2596,35 @@ function snapshotKpis(p) {
   return out;
 }
 
+// Resolve human-readable display labels for an objective's grouping attributes.
+// The hub groups by the raw stored value (stable key) but shows these labels.
+//   division: raw key ('fuelcell') → 'Fuel Cell'
+//   productLine: product id ('fc-residential') → product name ('Residential FC')
+//   productModel: model id ('fc-res-g2') → model name ('Gen 2')
+const DIVISION_LABELS = {
+  fuelcell: 'Fuel Cell',
+  electrolyzer: 'Electrolyzer',
+  exploration: 'Exploration'
+};
+function snapshotDivisionLabel(raw) {
+  if (!raw) return '';
+  return DIVISION_LABELS[raw] || raw;
+}
+function snapshotProductLabel(rawProductId) {
+  if (!rawProductId) return '';
+  const prod = (products || []).find(p => p.id === rawProductId);
+  return (prod && prod.name) || rawProductId;
+}
+function snapshotModelLabel(rawProductId, rawModelId) {
+  if (!rawModelId) return '';
+  const prod = (products || []).find(p => p.id === rawProductId);
+  if (prod && Array.isArray(prod.models)) {
+    const m = prod.models.find(mm => mm.id === rawModelId);
+    if (m && m.name) return m.name;
+  }
+  return rawModelId;
+}
+
 function computeStatusSnapshot() {
   try {
     const { adjusted, delays } = calculateAdjustedDates();
@@ -2643,9 +2672,13 @@ function computeStatusSnapshot() {
         isActive,
         gates: gatesForObjective(p),
         // Grouping attributes (hub layered grouping: division > product > generation).
+        // Raw values are stable grouping keys; *Label fields are display names.
         division: p.division || '',
+        divisionLabel: snapshotDivisionLabel(p.division || ''),
         productLine: p.productLine || '',
+        productLineLabel: snapshotProductLabel(p.productLine || ''),
         productModel: p.productModel || '',
+        productModelLabel: snapshotModelLabel(p.productLine || '', p.productModel || ''),
         // OKR-view data: key results with computed scores.
         keyResults: snapshotKeyResults(p),
         // KPI-view data: flat list of all measurable KPIs (KR-level + stage-gate).
