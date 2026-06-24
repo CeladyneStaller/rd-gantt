@@ -2523,6 +2523,79 @@ function gatesForObjective(p) {
 // to render status indicators on Stage-gate tiles without re-running the
 // cascade and health math itself. Keep payload small — one entry per
 // objective is plenty.
+// ─────────────────────────────────────────────────────────────────────────────
+// Snapshot enrichment for the R&D Hub's OKR / KPI / grouping features.
+//
+// The hub reads these off the computedStatus snapshot to render OKR-view and
+// KPI-view tiles, and to group tiles by division / product / generation. All
+// data is read from the project object (native or imported — import preserves
+// the full shape, so company-wide rd-gantt sees every division's detail).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A single KPI's measurement, shaped for the hub. Direction carries the
+// increase/decrease/maintain semantics so the hub can render "current → target".
+function snapshotKpiShape(kpi, extra) {
+  return Object.assign({
+    name: (kpi && kpi.name) || '',
+    target: (kpi && kpi.target != null) ? kpi.target : null,
+    current: (kpi && kpi.current != null) ? kpi.current : null,
+    direction: (kpi && kpi.direction) || 'increase'
+  }, extra || {});
+}
+
+// Compute a Key Result's 0-100 score, reusing the gantt's own progress math so
+// the hub shows the same numbers the gantt does.
+function snapshotKrScore(kr) {
+  if (!kr) return 0;
+  if (kr.trackingType === 'kpi') return calculateKpiProgress(kr.kpis || []);
+  if (kr.trackingType === 'subkr') return (typeof calcSubKrProgress === 'function') ? calcSubKrProgress(kr.subKrs || []) : 0;
+  return Math.round(kr.progress || 0);
+}
+
+// Build the keyResults array for the snapshot. Each KR carries its score
+// always; kpi-type KRs additionally surface their first KPI's target/current
+// as the headline measurement (the OKR tile shows name + score, with
+// target/current as extra detail when present).
+function snapshotKeyResults(p) {
+  const krs = Array.isArray(p.keyResults) ? p.keyResults : [];
+  return krs.map(kr => {
+    const out = {
+      name: kr.name || '',
+      score: snapshotKrScore(kr),
+      trackingType: kr.trackingType || 'percentage'
+    };
+    // Surface a headline target/current for kpi-type KRs (first KPI).
+    if (kr.trackingType === 'kpi' && Array.isArray(kr.kpis) && kr.kpis.length) {
+      const k0 = kr.kpis[0];
+      if (k0 && k0.target != null) out.target = k0.target;
+      if (k0 && k0.current != null) out.current = k0.current;
+      if (k0 && k0.direction) out.direction = k0.direction;
+    }
+    return out;
+  });
+}
+
+// Build the flat KPI list for the snapshot: every measurable KPI across the
+// objective's KRs and its stage-gates. The hub's KPI-view tile renders these
+// as a flat list (name + current/target). Each entry is tagged with its source
+// (which KR or which gate) for optional grouping in the tile.
+function snapshotKpis(p) {
+  const out = [];
+  // KR-level KPIs
+  (Array.isArray(p.keyResults) ? p.keyResults : []).forEach(kr => {
+    if (kr.trackingType === 'kpi' && Array.isArray(kr.kpis)) {
+      kr.kpis.forEach(kpi => out.push(snapshotKpiShape(kpi, { source: 'kr', krName: kr.name || '' })));
+    }
+  });
+  // Stage-gate KPIs (from inline stageGates definitions)
+  (Array.isArray(p.stageGates) ? p.stageGates : []).forEach(sg => {
+    if (Array.isArray(sg.kpis)) {
+      sg.kpis.forEach(kpi => out.push(snapshotKpiShape(kpi, { source: 'gate', gateName: sg.name || '' })));
+    }
+  });
+  return out;
+}
+
 function computeStatusSnapshot() {
   try {
     const { adjusted, delays } = calculateAdjustedDates();
@@ -2568,7 +2641,15 @@ function computeStatusSnapshot() {
         delayDays: h.delayDays,
         isComplete: isComplete(p),
         isActive,
-        gates: gatesForObjective(p)
+        gates: gatesForObjective(p),
+        // Grouping attributes (hub layered grouping: division > product > generation).
+        division: p.division || '',
+        productLine: p.productLine || '',
+        productModel: p.productModel || '',
+        // OKR-view data: key results with computed scores.
+        keyResults: snapshotKeyResults(p),
+        // KPI-view data: flat list of all measurable KPIs (KR-level + stage-gate).
+        kpis: snapshotKpis(p)
       };
     });
     return { computedAt: new Date().toISOString(), objectives };
