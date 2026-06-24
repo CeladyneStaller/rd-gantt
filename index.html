@@ -1991,17 +1991,24 @@ function filterImportedByType(importedProjects) {
 /** Fetch all external bins, remap, return merged array of imported projects */
 async function fetchAllExternalBins() {
   const active = EXTERNAL_BINS.filter(e => e.binId);
-  if (active.length === 0) return { imported: [], fetchedSources: [] };
+  if (active.length === 0) { importedProducts = []; return { imported: [], fetchedSources: [] }; }
   const results = await Promise.all(active.map(e => fetchExternalBin(e)));
   let imported = [];
   const fetchedSources = [];
+  // Collect divisional product definitions so the snapshot's product/model label
+  // resolvers can map imported objectives' productLine/productModel ids (which
+  // reference the SOURCE bin's products, not rd-gantt's own). Kept separate from
+  // `products` so they're never persisted into rd-gantt's own product list.
+  const collectedProducts = [];
   for (let i = 0; i < active.length; i++) {
     const data = results[i];
     if (!data || !Array.isArray(data.projects)) continue;
     fetchedSources.push(active[i].source);
     const remapped = remapImportedProjects(data.projects, active[i].source, active[i].label);
     imported = imported.concat(remapped);
+    if (Array.isArray(data.products)) collectedProducts.push(...data.products);
   }
+  importedProducts = collectedProducts;
   // Apply type filter
   imported = filterImportedByType(imported);
   return { imported, fetchedSources };
@@ -2601,23 +2608,69 @@ function snapshotKpis(p) {
 //   division: raw key ('fuelcell') → 'Fuel Cell'
 //   productLine: product id ('fc-residential') → product name ('Residential FC')
 //   productModel: model id ('fc-res-g2') → model name ('Gen 2')
+//
+// CRITICAL: imported objectives (most of the company gantt) carry their product
+// info in importProductAssoc[p.id], NOT directly on p.productLine. We resolve
+// the *effective* product line/model (mirroring getEffectiveProductLine and the
+// imported-display logic) so labels work for imported objectives too.
 const DIVISION_LABELS = {
   fuelcell: 'Fuel Cell',
   electrolyzer: 'Electrolyzer',
   exploration: 'Exploration'
 };
+
+// Effective productLine for an objective: import association first (imported
+// projects), then own field. Reuses getEffectiveProductLine when available.
+function snapshotEffectiveProductLine(p) {
+  if (typeof getEffectiveProductLine === 'function') return getEffectiveProductLine(p);
+  if (p && p._imported && typeof importProductAssoc === 'object') {
+    const a = importProductAssoc[p.id];
+    if (a && a.productLine) return a.productLine;
+  }
+  return (p && p.productLine) || '';
+}
+// Effective productModel for an objective: import association first, then own.
+function snapshotEffectiveProductModel(p) {
+  if (p && p._imported && typeof importProductAssoc === 'object') {
+    const a = importProductAssoc[p.id];
+    if (a && a.productModel) return a.productModel;
+    // Walk up imported parent chain (cycle-guarded), like getEffectiveProductLine.
+    const seen = new Set([p.id]);
+    let cur = (typeof projects !== 'undefined') ? projects.find(x => x.id === p.parentId) : null;
+    while (cur && cur._imported && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const ca = importProductAssoc[cur.id];
+      if (ca && ca.productModel) return ca.productModel;
+      cur = projects.find(x => x.id === cur.parentId);
+    }
+  }
+  return (p && p.productModel) || '';
+}
+
+// Combined product lookup: rd-gantt's own products first, then products
+// collected from external bins (imported objectives reference those — their
+// productLine/productModel ids live in the SOURCE bin, not rd-gantt's).
+function snapshotFindProduct(rawProductId) {
+  if (!rawProductId) return null;
+  let prod = (products || []).find(p => p.id === rawProductId);
+  if (!prod && Array.isArray(importedProducts)) {
+    prod = importedProducts.find(p => p.id === rawProductId);
+  }
+  return prod || null;
+}
+
 function snapshotDivisionLabel(raw) {
   if (!raw) return '';
   return DIVISION_LABELS[raw] || raw;
 }
 function snapshotProductLabel(rawProductId) {
   if (!rawProductId) return '';
-  const prod = (products || []).find(p => p.id === rawProductId);
+  const prod = snapshotFindProduct(rawProductId);
   return (prod && prod.name) || rawProductId;
 }
 function snapshotModelLabel(rawProductId, rawModelId) {
   if (!rawModelId) return '';
-  const prod = (products || []).find(p => p.id === rawProductId);
+  const prod = snapshotFindProduct(rawProductId);
   if (prod && Array.isArray(prod.models)) {
     const m = prod.models.find(mm => mm.id === rawModelId);
     if (m && m.name) return m.name;
@@ -2673,12 +2726,21 @@ function computeStatusSnapshot() {
         gates: gatesForObjective(p),
         // Grouping attributes (hub layered grouping: division > product > generation).
         // Raw values are stable grouping keys; *Label fields are display names.
-        division: p.division || '',
-        divisionLabel: snapshotDivisionLabel(p.division || ''),
-        productLine: p.productLine || '',
-        productLineLabel: snapshotProductLabel(p.productLine || ''),
-        productModel: p.productModel || '',
-        productModelLabel: snapshotModelLabel(p.productLine || '', p.productModel || ''),
+        // Uses EFFECTIVE resolution so imported objectives (whose product info
+        // lives in importProductAssoc, not on p directly) group correctly.
+        ...(() => {
+          const effDiv = (typeof getEffectiveDivision === 'function') ? getEffectiveDivision(p) : (p.division || '');
+          const effPL = snapshotEffectiveProductLine(p);
+          const effPM = snapshotEffectiveProductModel(p);
+          return {
+            division: effDiv || '',
+            divisionLabel: snapshotDivisionLabel(effDiv || ''),
+            productLine: effPL || '',
+            productLineLabel: snapshotProductLabel(effPL || ''),
+            productModel: effPM || '',
+            productModelLabel: snapshotModelLabel(effPL || '', effPM || '')
+          };
+        })(),
         // OKR-view data: key results with computed scores.
         keyResults: snapshotKeyResults(p),
         // KPI-view data: flat list of all measurable KPIs (KR-level + stage-gate).
@@ -2871,6 +2933,7 @@ let tempStageGatesLinked = true;
 let tempAssocObjectives = [];
 let importAssociations = {};   // { [localProjectId]: ['fc_123', 'el_45', ...] }
 let importProductAssoc = {};   // { [importedProjectId]: { productLine, productModel } }
+let importedProducts = [];     // product defs collected from external bins (for label resolution only; never persisted)
 let importDelayExclusions = new Set(); // imported project IDs excluded from parent delay propagation
 let importTypeFilter = ['objective', 'stagegate']; // project types to import from external bins
 let tempImportAssoc = [];      // temp array for modal editing
