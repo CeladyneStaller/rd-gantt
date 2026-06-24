@@ -3000,17 +3000,22 @@ function mergeImportedIntoProjects(imported, fetchedSources) {
   const importedIds = new Set(imported.map(p => p.id));
   // Also include IDs of imported projects we KEPT (from failed sources)
   projects.filter(p => p._imported && !fetchedSet.has(p._importSource)).forEach(p => importedIds.add(p.id));
+  // An imported id's source is its prefix ('el_42' -> 'el'). Only prune refs for
+  // sources we actually fetched this load, so we don't clobber keys a co-tenant
+  // (the division tracker / broker) writes into this shared bin for divisions we
+  // don't import here — e.g. Exploration.
+  const srcFetched = id => fetchedSet.has(String(id).split('_')[0]);
   for (const [localId, linked] of Object.entries(importAssociations)) {
-    const pruned = linked.filter(id => importedIds.has(id));
+    const pruned = linked.filter(id => !srcFetched(id) || importedIds.has(id));
     if (pruned.length > 0) importAssociations[localId] = pruned;
     else delete importAssociations[localId];
   }
   // Prune stale product associations and delay exclusions
   for (const id of Object.keys(importProductAssoc)) {
-    if (!importedIds.has(id)) delete importProductAssoc[id];
+    if (srcFetched(id) && !importedIds.has(id)) delete importProductAssoc[id];
   }
   for (const id of importDelayExclusions) {
-    if (!importedIds.has(id)) importDelayExclusions.delete(id);
+    if (srcFetched(id) && !importedIds.has(id)) importDelayExclusions.delete(id);
   }
 }
 
